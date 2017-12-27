@@ -1,0 +1,59 @@
+开发程序：
+
+1.OOA:分析
+2.OOD:设计
+3.OOP:编码
+4.OOT:测试
+5.OOSM:维护
+
+
+VCM:
+
+V：试图(用户界面) -- jsp
+    ↑
+    |
+    |  页面数据  (Panel中的事件监听：键盘,按钮)
+    ↓
+C: 控制器 Action
+    |
+    |  Java数据  
+    ↓
+M：模型
+    
+biz:业务逻辑
+    |
+    |
+    ↓
+dao:数据访问  (接口)
+                |
+                | 
+                ↓
+          JDBC  &  IO
+           |       |            
+           |       |
+           ↓       ↓
+                           数据库         本地磁盘
+
+
+素材：
+RPG Maker XP(开源游戏引擎/框架)
+RPG Maker VP
+Ruby 语言
+
+在项目中新建文件夹graphics然后建立子文件夹来保存各种将要用到的图片：
+background
+game
+string
+window
+other
+
+建包：
+cn.com.公司名.项目名.机能分类
+com.song.Tetris.UI
+com.song.Tetris.service
+com.song.Tetris.entity
+com.song.Tetris.dao
+com.song.Tetris.dto
+com.song.Tetris.main
+com.song.Tetris.uil
+com.song.Tetris.config

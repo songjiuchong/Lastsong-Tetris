@@ -1,0 +1,2 @@
+java -jar LastSongTetris.jar
+

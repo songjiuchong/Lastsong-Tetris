@@ -1,0 +1,2329 @@
+THE LAST SONG TETRIS by 宋九重 
+流程汇总：
+
+
+***************************************************************
+                INDEX For THE LAST SONG TETRIS  
+***************************************************************
+
+
+
+壹.Main
+
+贰.GameControl
+
+叁.Data
+
+肆. DAO
+
+<一> DataDisk
+<二> DataBase
+
+伍.GameService
+
+陆.GameDto
+
+柒.Player
+
+捌.GameAct
+
+玖.FrameOfGame
+
+拾.PanelOfGame
+
+拾壹.PlayerControl
+
+拾贰.Layer(s)
+
+<一> Layer
+<二> LayerGame
+<三> LayerBackGround
+<四> LayerDate
+<五> LayerDisk
+<六> LayerDataBase
+<七> LayerButton
+<八> LayerNext
+<九> LayerLevel
+<十> LayerPoint
+<十一> LayerAbout
+
+拾叁.FrameOfPlayerInfo
+
+Delivery
+
+
+***************************************************************
+                            CONTENT   
+***************************************************************
+
+
+
+
+************************   壹.Main   ************************* 
+
+(Main)
+
+Main方法仅仅初始化了一个游戏控制器对象,而游戏模块的初始化与链接将由此游戏的核心控制块——GameControl来处理：
+
+//创建游戏控制器(连接了游戏面板,游戏业务逻辑和DTO层)
+new GameControl();
+
+
+
+
+**********************  贰.GameControl   ********************
+
+(GameControl)
+
+游戏控制块：GameControl是此游戏的核心控制块,在Main方法将它初始化后就意味着游戏程序的运行开始;游戏中的各大模块都将在GameControl的构造方法中初始化,这些模块之间的链接(有些模块需要获得其他模块的控制权,就需要在初始化时将它们之后待控制模块的对象传入它们的构造方法中保存)也将由GameControl来完成;而就GameControl本身来说,它需要获得PanelOfGame/GameDto/GameService的控制权;而PlayerControl又将获得GameControl本身的控制权以便及时地将玩家的按键和鼠标事件信息传递给游戏控制块处理(严格的说,PlayerControl是游戏面板的一部分);
+
+
+它将包含3个重要接口：
+<1> 游戏业务逻辑"接口"：和GameService相连;
+<2> 数据访问接口A: 和数据库（JDBC）相连;
+<3> 数据访问接口B: 和本地磁盘(IO)相连;
+（注：利用接口来连接一个类和实现接口类的对象的最大好处是提高维护性和便于扩展,举例来说编程者可以非常方便的提供一个接口C并连入一个新的数据库而不需要做太大的变动;也可以把原有的接口连接的对象替换掉，同样不需要对程序做多少变更;因为接口降低了接口拥有类和实现接口类的耦合程度,维护和扩展时只要对实现接口类做相应的变更就行了）;
+
+
+//提供了数据访问接口A：private Data dataA;
+
+//数据访问接口B：private Data dataB;
+
+//游戏控制器行为方法映射表：private Map<Integer,Method> actionList;
+
+//保存游戏面板对象: PanelOfGame panelofgame;
+
+//保存游戏业务逻辑对戏: GameService gameservice;
+
+//游戏数据源：GameDto gamedto;
+	
+//游戏主线程对象: Thread gameThread;
+
+//玩家分数记录窗口：FrameOfPlayerInfo frameofplayerinfo;
+	
+	
+
+1.构造方法：
+
+public GameControl(){ 
+		
+<1> 创建游戏数据传输层,意在隔离UI（客户端）与主要的逻辑块;
+    this.gamedto= new GameDto();
+
+<2> 创建游戏逻辑控制块服务(连接了游戏数据传输层);
+    this.gameservice =new GameService(gamedto);
+
+<3> 利用向上转型将待访问的数据库(DataTest)对象通过Data接口"连入"GameControl;
+    this.dataA=new DataTest();
+
+    利用setDbRecord方法将dataA接口所连接对象的数据传入DTO层保存;
+    this.gamedto.setDbRecord(dataA.loadData());
+
+
+<4> 利用向上转型将待访问的本地磁盘(DataTest)对象通过Data接口"连入"GameControl;
+    this.dataB=new DataDisk();
+
+    利用setDbRecord方法将dataB接口所连接对象的数据传入DTO层保存;
+    this.gamedto.setDiskRecord(dataB.loadData());   
+
+
+<5> 创建游戏面板(将DTO对象传入游戏面板对象,在它初始化各Layer层时将把DTO对象传给各层)：
+    this.panelofgame =new PanelOfGame(gamedto);
+
+<6> 创建玩家控制器(连接游戏控制器)：
+    PlayerControl playercontrol=new PlayerControl(this);
+
+<7> 在游戏面板上连接玩家控制器：
+    panelofgame.setPlayerControl(playercontrol);
+
+<8> 初始化玩家分数记录窗口：
+    this.frameofplayerinfo=new FrameOfPlayerInfo(this);
+		
+<9> 创建游戏窗口,装入游戏面板：
+    new FrameOfGame(panelofgame);
+
+
+<10> 初始化游戏控制器行为方法反射表：
+
+       actionList = new HashMap<Integer,Method>();
+
+        try{
+		actionList.put(38, this.gameservice.getClass().getMethod("keyUp"));    //上;
+
+		actionList.put(40, this.gameservice.getClass().getMethod("keyDown"));  //下;
+
+		actionList.put(37, this.gameservice.getClass().getMethod("keyLeft"));  //左;
+
+		actionList.put(39, this.gameservice.getClass().getMethod("keyRight")); //右;	
+
+                actionList.put(87, this.gameservice.getClass().getMethod("keyUp"));    //W;
+
+		actionList.put(83, this.gameservice.getClass().getMethod("keyDown"));  //S;
+
+		actionList.put(65, this.gameservice.getClass().getMethod("keyLeft"));  //A;	
+
+	        actionList.put(68, this.gameservice.getClass().getMethod("keyRight")); //D;
+
+                actionList.put(32, this.gameservice.getClass().getMethod("JUMP")); //SPACE;      (瞬间下落)
+
+		actionList.put(66, this.gameservice.getClass().getMethod("ShadowOnOff")); //B;   (阴影开关)
+
+		actionList.put(80, this.gameservice.getClass().getMethod("Pause"));//P;          (暂停)
+
+		actionList.put(91, this.gameservice.getClass().getMethod("GmTime"));       //[;
+
+
+	}catch(Exception e){
+		e.printStackTrace();
+	}
+}
+
+
+2.start按钮触发开始游戏动作/开始持续下落的新线程：
+	public void startGame() {
+
+        //一旦玩家点下游戏面板中的开始按钮,则让此按钮无法在作用：
+	this.panelgame.buttonSwitch(false);
+
+        //命令GameService对象启动游戏主线程方法：
+	this.gameservice.startMainThread();
+
+        //命令PanelOfGame对象重新绘制一次画面;
+	this.panelgame.repaint(); 
+
+	//初始化游戏主线程对象,并利用匿名内部类实现其run方法：
+	(这里称此线程为"游戏主线程"是由于：首先,它的起始是由游戏开始按键发起的;其次,当游戏开始状态为false时,将由它发起游戏结束处理方法，并将线程停止;可以说和游戏的状态保持绝对同步;最重要的是,玩家直接控制游戏动作相关的那条线程在程序运行时就存在了,不是游戏状态置为开始时才启动的,而当游戏状态被置为false时,那条线程仍然存在,只不过停止了某些功能,比如对LayerGame的绘制/对向下按键的处理等;综上所述,将此条线程——gameThread定义为"游戏主线程"是最恰当的;)
+
+		this.gameThread = new Thread(){
+		@Override
+		public void run(){
+
+		  //如果游戏处于结束状态则结束此线程：
+		  while(gamedto.isStart()){
+
+		     try {
+
+//游戏开始时先挺800毫秒防止刚刷新出的方块直接就显示在下落后的位置:
+			Thread.sleep(800)
+
+//如果游戏处于暂停状态则循环执行sleep方法:
+			if(gamedto.isPause()){
+				continue;
+			}			
+			
+		gameservice.keyDown();
+
+//由于此线程的keyDown方法直接跳过了GameControl接收键盘信息后的repaint方法,所以这里需要刷新一下画面:
+									    		panelofgame.repaint();
+
+	      //线程运行间隔为与目前玩家等级相关的一个long型变量;
+	      Thread.sleep(gamedto.getMainThreadSleepTime());
+
+	} catch (InterruptedException e) {
+								e.printStackTrace();
+				}
+			}
+
+		//游戏结束后的处理方法：
+		afterLose();
+
+		}
+	};
+
+		//启动线程：
+		this.gameThread.start();
+
+	}
+
+
+
+
+3.根据PlayerControl传递来的玩家按键控制信息来决定游戏控制器行为：
+       public void actionByKeyCode(int keyCode) {
+         try{
+          //判断游戏控制器行为方法映射表中是否存在传递过来的按键代码对应的检索信息：
+               if(this.actionList.containsKey(keyCode)){
+
+          //通过游戏控制器行为方法映射表取得从PlayerControl传入按键代码所对应的GameService中的行为方法,并激活此方法(参数为：调用此方法的对象/此方法中的参数,此出的方法无参数)：
+               this.actionList.get(keyCode).invoke(this.gameservice);
+	       }
+         }catch(Exception e){
+			e.printStackTrace();
+	 }
+               //命令PanelOfGame对象重新绘制一次画面;
+               this.panelgame.repaint();  
+	}
+
+
+
+4.游戏结束后处理方法：
+	protected void afterLose() {
+		//显示玩家分数记录窗口,并将玩家当前分数传入：
+		this.frameofplayerinfo.showWindow(this.gamedto.getCurretPoint());
+	}
+
+
+
+5.保存玩家分数记录:
+	public void saveRecord(String name) {
+
+		//获取从玩家分数记录窗口/DTO层得到的玩家信息：
+		Player pla = new Player(name,this.gamedto.getCurretPoint());
+		
+		//把玩家的分数记录保存到DataDisk本地磁盘中：
+		this.dataB.saveData(pla);
+		//读取更新后的本地磁盘玩家记录到DTO层：
+		this.gamedto.setDiskRecord(dataB.loadData());
+		
+		(数据库读取未开放！)
+		//把玩家的分数记录保存到DataBase数据库中：
+		this.dataA.saveData(pla);
+		//读取更新后的数据库玩家记录到DTO层：
+		this.gamedto.setDbRecord(dataA.loadData());
+
+		
+	}
+
+
+
+6.刷新开始游戏开始按钮;
+	public void startBtnRefresh() {
+
+		//开始按钮重新可以点击：
+		this.panelofgame.buttonSwitch(true);
+
+		//刷新游戏画面以便显示最新的分数排名：
+		this.panelofgame.repaint();
+		
+	}
+
+
+
+( //  键盘事件引发的移动方法的中转方法：
+ GameControl中switch case方法的弃用使得这里的传递方法也被弃用了：
+
+
+        //从PlayerControl块传出的移动信息的中转方法，还包含了对PanelOfGame发出的刷新画面的请求：
+        public void keyUp() {
+		this.gameservice.keyUp();
+		panelgame.repaint();
+	}
+
+	public void keyDown() {
+		this.gameservice.keyDown();
+		panelgame.repaint();
+	}
+
+	public void keyLeft() {
+		this.gameservice.keyLeft();
+		panelgame.repaint();
+	}
+
+	public void keyRight() {
+		this.gameservice.keyRight();		
+		panelgame.repaint();
+	} )
+
+*************************  叁.Data  *************************
+
+(Data)
+
+数据持久层接口：作用是连接GameControl与DataDisk/DataBase；便于在GameControl中维护/扩展接口实现类;
+
+1.获得数据的抽象方法: List<Player> loadData(); 
+
+2.存储数据的抽象方法: void saveData(Player pla);
+
+
+
+***********************   肆. DAO   *************************
+
+<一>(DataDisk)
+
+  本地磁盘数据类属于dao层: 数据持久层对象(Data Access Object),实现了接口Data,其职能是通过Data接口被安装在GameControl中以供游戏读写本地磁盘中的玩家数据;
+
+//保存/读取文件的地址：private static final String FILE_PATH="save/record.dat";
+
+1.实现Data接口的loadData方法，读取本地磁盘玩家数据：
+
+    public List<Player> loadData() {
+
+        ObjectInputStream ois=null;
+        List<player> players=null;
+
+    //通过IO对象流以文件的形式读取Player对象数据到save文件夹：
+    try{ois= new ObjectInputStream(new FileInputStream(FILE_PATH));
+
+    //把序列化后的players对象写出;由于readObject()方法返回的时Object类型的对象,所以这里需要强制转型：
+	 players=(List<Player>)ois.readObject(players); 
+		}catch(Exception e){
+			e.printStackTrace();
+		}finally{
+			try{
+				ois.close();      //关闭IO对象流;
+			}catch (IOException e){
+				e.printStackTrace();
+			}
+		}
+		return players;
+	}
+
+
+2.实现Data接口的saveData方法，在每次游戏结束时保存本地磁盘玩家数据后将整个列表排序并保留最高的5条：
+
+    public void saveData(Player players) {
+
+                //取出本地玩家数据： 
+		List<Player> players= this.loadData();
+		//追加新记录：
+		players.add(pla);
+		//排序：
+		Collections.sort(players);
+		//只保留最高的5条记录存储：
+		for(int i=0;i<players.size()-5;i++){
+			players.remove(5+i);
+		}
+
+		ObjectOutputStream oos=null;
+
+            //通过IO对象流以文件的形式保存Player对象数据到save文件夹：
+	    try{oos=new ObjectOutputStream(new FileOutputStream(FILE_PATH));
+
+                //把序列化后的players对象写入：
+	    	oos.writeObject(players); 
+	}catch(Exception e){
+		e.printStackTrace();
+	}finally{
+		try{oos.close();              //关闭IO对象流;
+		}catch(IOException e){
+			e.printStackTrace();
+		}
+		}
+	}
+
+
+///////////////////////////////////////////////////////////////
+// TODO UPDATE
+
+<二>(DataBase)
+ 数据库存放/读取玩家信息功能暂时不开放！！
+
+
+
+
+**********************   伍.GameService   *********************
+
+(GameService)
+
+游戏业务逻辑块：
+
+  由于通过业务逻辑直接读写数据库/本地磁盘等的构架更倾向于web的构架,而此处就游戏构架来说还是由GameControl来承担读写数据库/本地磁盘等的工作较好,所以GameService将会和数据库/本地磁盘一起与GameControl  
+联通,受其支配;
+
+   (程序运行后,玩家对程序做出按键操作;此时由PanelOfGame中安装的按键监听发起由PlayerControl中键盘事件方法处理后的信息传到了GameControl，由它把键盘事件信息进一步向GameService传送,由GameService根据键盘事件信息做出逻辑动作,通过更新GameDto中的相关信息（如：对GameAct中的actPoints方块坐标数组做出改变）来间接控制游戏面板中各Layer在下一次画面刷新时将显示的内容;)
+
+通俗来说业务逻辑块影响游戏主要动作的过程是：
+
+    根据GameControl传递来的按键信息再通过DTO层访问GameAct对象并调用其相关移动方法（通过DTO层取得必要信息变量作为参数传入这些方法）来实现游戏面板上信息的正确显示；GameControl告诉GameService玩家按了哪些按键了,GameService根据按键信息做出判断并告诉DTO层中的GameAct对象，我要让你做某些动作了（移动/刷新）,并且把那些动作需要的数据参数（包括其中一些需要访问DTO层取得的）传给你了,你利用这些数据和信息做完这些动作以后就把你现在的状态信息保存在actPoint里吧,等会PanelOfGame中的LayerGame图层会向你访问actPoint的;当然，在要求GameAct对象去进行某些动作后并不是所有的更新信息都体现在actPoint对象里,就像在进行向下运动后可能会对GameMap,分数,等级以及方块类型代码等信息进行更新，这些信息都是直接被传递给DTO层保存的，待以后PanelOfGame中的各个相关Layer甚至GameService自己（通过获取next信息的dto.getNext方法等）访问的;所以GameService一方面要从DTO层取得信息，一方面还要传递给它信息;
+
+
+
+（1）GameService块声明了一个随机数生成器：
+ private Random random = new Random();
+
+（2）将方块类型的种类定义为常量为 7：
+ private static final int TYPE_NUMBER=7;
+
+（3）规定升级所需的消行数：
+ private static final int LEVEL_UP=20;
+
+
+1.构造方法：
+
+public GameService (GameDto dto){
+		this.dto=dto;
+
+       //初始化GameAct对象,并把一个0-6的随机数作为参数传递给其构造方法中的init方法刷新第一个方块;
+       GameAct act=new GameAct(random.nextInt(TYPE_NUMBER));
+
+       //将游戏动作对象放入GameDto中保存;
+       dto.setGameact(act);   
+      
+       //给下一个方块信息赋一个0-6随机的方块组合编号;
+       this.dto.setNext(random.nextInt(TYPE_NUMBER));
+}
+
+
+2.旋转方法执行：
+如果GameService收到GameControl传来的向上键盘事件就会执行旋转方法操作：
+
+public void keyUp() {
+
+//如果游戏处于暂停状态则不执行向上操作：
+		if(this.dto.isPause()){
+			return;
+		}
+
+//用线程同步方法块来保证利用dto对象调用rotate方法的线程独占所有以此dto对象的线程同步方法,直到此线程停止调用任何此dto对象的线程同步方法才允许另一条线程来调用：
+
+	synchronized(this.dto){
+
+        //通过DTO层中的gameact对象调用rotate()方法：
+	this.dto.getGameact().rotate(this.dto.getGameMap());		}
+}
+
+
+3.向下方法移动/刷新方块执行：
+如果GameService收到GameControl传来的向下键盘事件就会执行向下方法操作(为了瞬间下落方法的执行,这里需要一个返回值提示是否已经触底)：
+
+public boolean keyDown() {
+
+//如果游戏处于暂停状态或者结束状态则不执行向下操作:
+(这里只在keyDown方法中根据游戏结束状态限制方法的执行是由于：当游戏结束后虽然游戏层的其他图形将不再被绘制但是游戏地图还会继续被更新绘制,那向下方法很可能在游戏已经结束的情况更新游戏地图信息;)
+
+		if(this.dto.isPause()||(!this.dto.isStart())){
+			return true;
+		}
+
+
+//用线程同步方法块来保证利用dto对象调用move方法的线程独占所有以此dto对象的线程同步方法,直到此线程停止调用任何此dto对象的线程同步方法才允许另一条线程来调用：
+
+	synchronized(this.dto){
+
+（1）先调用gameact对象的移动方法move,方向为向下,如果此时经过move方法判断可以移动，则移动并结束方法;否则，无法再向下移动了,则把此时它在map区域的方块坐标对应的boolean二维数组中元素声明为true, 成为堆积方块：
+  if(this.dto.getGameact().move(0, 1，this.dto.getGameMap())){
+       return false; //提示未触底,继续循环执行瞬间下落方法;
+  }
+
+    boolean[][]map=this.dto.getGameMap();
+    Point[] act=this.dto.getGameact().getActPoints();
+	   for(int i=0;i<act.length;i++){
+		map[act[i].x][act[i].y]=true;
+	}
+
+（2）进行一次消行运行的始末： 
+	int lines=this.RemovedLine();
+		
+（3）根据一次消行后结果更新玩家的最新消行数,分数与等级信息：
+	this.newPoint(lines);
+
+（4）判断游戏是否结束,如果结束了则做结束处理：
+	if(this.isLose()){
+		//游戏将变为结束状态:
+		this.dto.setStart(false);
+	}
+
+（5）触发刷新方法时在dto层取得next信息作为init方法的参数在面板的游戏层刷新出这个方块让玩家操作;并且把一个0-6随机整数保存在dto层的next变量中等待LayerNext和GameService下一次触发刷新方法时访问：
+       this.dto.getGameact().init(this.dto.getNext());  
+       this.dto.setNext(random.nextInt(TYPE_NUMBER));     
+
+       return true; //提示已经触底,结束瞬间下落方法;
+
+	}
+}
+
+
+4.消行判断/执行：
+
+     private int RemovedLine() {
+
+	//获得游戏堆积地图：
+	boolean[][] map=this.dto.getGameMap();
+		
+	//设定一次消行数(所消行数不固定);
+	int lines=0;
+		
+	//从上往下逐行扫描游戏堆积地图,判断是否存在可消去的行：
+
+	jump:
+	for(int y=0;y<18;y++){
+	//检查行中一旦出现非堆积坐标则直接检查下一行：
+		for(int x=0;x<10;x++){
+			if(!map[x][y]){
+				continue jump;
+			}
+		}
+
+	//经检查后确定的全堆积行则将被进行消行处理,确认全堆积的y行坐标将被作为参数传递给消行处理方法;处理结束后后检查下一行：
+			this.removeLine(y,map);
+			
+	//每次消行操作结束后增加lines：
+			lines++;
+		}
+		return lines;
+	}
+
+
+5.消行处理(单行)：
+     private void removeLine(int rowNum,boolean[][] map){
+
+//逐列将从参数的下标指定行开始依次将它上一行的boolean状态传入此行,并将游戏层的最上一行,也就是y=0行赋值为false;
+(相当于将参数的下标指定行消除后所有它上面的内容被整体下移了一个单位)
+	for(int x=0;x<10;x++){
+		for(int y=rowNum;y>0;y--){
+			map[x][y]=map[x][y-1];
+		}
+		map[x][0]=false;
+	}
+}
+
+
+6.在DTO层中保存一次消行后玩家最新的消行数,分数与等级信息：
+   private void newPoint(int lines) {
+
+    //获得玩家当前等级：
+	int level = this.dto.getcurrentLevel();
+
+    //获得玩家当前消行数：
+	int rmLine=this.dto.getCurrentRemovedLine();
+
+    //获得玩家当前分数：
+	int point=this.dto.getCurretPoint();
+		
+    //设置消行加分规则数组(1行：10;2行：30;3行：50;4行：80):
+	int[] pointList={0,10,30,50,80};
+		
+    //根据一次的消行数判断所得分数：
+	int addPoint= pointList[lines];
+		
+    //判断一次消行后是否构成升级,如果升级将升级后的等级传入DTO层：
+	if(rmLine%LEVEL_UP+lines>=LEVEL_UP){
+		this.dto.setcurrentLevel(++level);
+	}
+		
+		
+	//不管升级与否,将最新的消行数保存在DTO层：
+	this.dto.setCurrentRemovedLine(rmLine+lines);
+	//不管升级与否,将最新的分数保存在DTO层：
+	this.dto.setCurretPoint(point+addPoint);
+}
+
+
+
+7.检查游戏是否结束方法(在向下操作结束后检查游戏地图的最上一行是否有方块,如果有,则判断为游戏结束)：
+
+ <1>获得将要被刷新出游戏方块和已经更新了的堆积地图：
+(由于玩家向下按键在判断触底发生之后触发了游戏结束检查,此时地图信息已经更新,而且刷新方块也已放入ActPoints中保存,但是GameControl中的repaint()方法还未执行,此处来判断将要刷新的方块是否会和游戏地图重合能够决定游戏是否已经结束;)
+
+     Point[] actPoints=this.dto.getGameact().getActPoints();
+     boolean[][] map=this.dto.getGameMap();
+
+		
+ <2>第一步检查：将要刷新的方块是否在游戏层中刷新后会与地图重合：
+	for(int i=0;i<actPoints.length;i++){
+	  if(map[actPoints[i].x][actPoints[i].y]){
+			
+				
+   //把将要刷新且导致游戏结束的方块放入堆积地图中,下一次repaint方法将把整个堆积地图以游戏结束色绘制：
+
+	for(int j=0;j<actPoints.length;j++){
+	   map[actPoints[j].x][actPoints[j].y]=true;
+		}
+				
+		return true;
+	}
+}
+
+ <3>第二步检查：方块在触底之后是否以及处于游戏层的最上一行,如果是,判断为游戏结束;
+(此步检查的意义是防止玩家在游戏刷新方块区域之外,也就是游戏层的两侧发生满盈状态;)
+	for(int x=0;x<10;x++){
+		if(map[x][0]){
+			return true;
+		}
+	}
+
+ <4>通过二项检查后没有满足游戏结束条件返回false:
+	return false;
+}
+	
+
+
+8.向左/右移动方法执行：
+
+如果GameService收到GameControl传来的向左/右键盘事件就会执行向左/右方法操作：
+
+<1> 左移：
+    public void keyLeft() {
+
+//如果游戏处于暂停状态则不执行向左操作：
+		if(this.dto.isPause()){
+			return;
+		}
+
+
+//用线程同步方法块来保证利用dto对象调用move方法的线程独占所有以此dto对象的线程同步方法,直到此线程停止调用任何此dto对象的线程同步方法才允许另一条线程来调用：
+
+	synchronized(this.dto){
+
+      this.dto.getGameact().move(-1, 0,this.dto.getGameMap());
+
+	}
+}
+
+
+<2> 右移：
+    public void keyRight() {
+
+//如果游戏处于暂停状态则不执行向右操作：
+		if(this.dto.isPause()){
+			return;
+		}
+
+
+//用线程同步方法块来保证利用dto对象调用move方法的线程独占所有以此dto对象的线程同步方法,直到此线程停止调用任何此dto对象的线程同步方法才允许另一条线程来调用：
+
+	synchronized(this.dto){
+
+      this.dto.getGameact().move(1, 0,this.dto.getGameMap());
+
+	}
+}
+	
+
+9.瞬间下落方法：
+  public void JUMP(){
+
+//如果游戏处于暂停状态则不执行JUMP操作：
+		if(this.dto.isPause()){
+			return;
+		}
+
+       //如果未触底则继续执行:
+	while(!this.keyDown()); 
+  }
+
+
+10.阴影开关：
+  public void ShadowOnOff(){
+        //改变showShadow的开关状态(初始状态为false):
+	this.dto.setShowShadow(); 
+  }
+
+
+11.暂停方法：
+  public void Pause(){
+	 //改变暂停状态(初始状态为false,且只有在游戏处于开始状态时才可以切换):
+	if(this.dto.isStart()){
+	this.dto.setPause();  
+	}
+  }
+
+
+
+12.游戏主线程开始方法：
+
+    public void startMainThread() {
+
+        //将DTO层用来判断游戏主线程是否开始的boolean变量设定为true，LayerGame的绘制方法会根据此变量判断是否绘制游戏动作图形:
+        this.dto.setStart(true);     
+	//重新将DTO层中的数据初始化：
+	this.dto.dtoInit();    
+        
+   }
+
+
+
+13.GM方法：
+	public void GmTime(){
+		this.dto.setCurrentRemovedLine(this.dto.getCurrentRemovedLine()+1);
+		this.dto.setCurretPoint(this.dto.getCurrentRemovedLine()*10);
+		this.dto.setcurrentLevel(this.dto.getCurrentRemovedLine()/20);
+	}
+
+
+
+
+**********************   陆.GameDto   *************************
+
+(GameDto)
+
+DTO层(数据传输层)的作用：
+1.是为了隔离UI（客户端）与其它各个主要模块，避免业务逻辑的暴露;
+2.提高广域网中较大模块的传输效率；
+3.最重要的一点就是跨平台，Client端与Server端的平台不同是很正常的，如果Service直接返回Domain Model，Client端根本无法解析；
+
+DTO中保存了UI（客户端）中需要被显示的各个功能及数据的对象地址或是变量，无论是之后UI要求访问那些需要被显示的内容，还是业务逻辑要求访问并改变这些待显示的内容，都必须通过DTO层中保存的对象来调用；
+
+DTO层提供了：
+
+(1)DTO层提供了对游戏动作模块对象的保存：GameAct gameact;
+
+(2)一些重要的数据变量及它们的setter/getter方法;以便PanelOfGame中各个层的访问和GameService块对其进行访问/修改:
+
+<1> next
+<2> currentLevel
+<3> curretPoint
+<4> currentRemovedLine
+<5> List<Player> dbRecord;
+<6> List<Player> diskRecord;
+<7> boolean start;      //游戏是否处于开始状态;
+<8> boolean showShadow; //是否显示阴影;
+<9> boolean  pause;     //游戏是否被暂停;
+<10>long mainThreadSleepTime; //游戏主线程的睡眠时间;
+
+( 切换showShadow的开关状态:
+  public void setShowShadow() {
+	this.showShadow = !this.showShadow;  
+  })
+
+( 切换暂停状态:
+  public void setPause() {
+	this.pause = !this.pause; 
+  })
+
+(public void setcurrentLevel(int currentLevel) {
+	this.currentLevel = currentLevel;
+	//计算游戏主线程等待时间(就是方块自动下落的间隔)：
+	long sleep=(-40*currentLevel+740);
+	sleep=sleep<100?100:sleep;
+	//保存与等级相对应的主线程等待时间;
+	this.setMainThreadSleepTime(sleep);
+})
+
+	
+(3)一个用来存储堆积方块坐标的二维布尔数组：boolean[][] gameMap; 
+
+
+
+1.GameDto构造方法:
+	
+        public GameDto(){
+	    dtoInit();
+	}
+
+
+2.初始化GameDto中必要信息的dtoInit方法：
+(游戏重新开始时将堆积地图,分数等信息清零)
+
+        public void dtoInit(){
+
+                //将存储堆积方块坐标的二维布尔数组初始化为10行X18列(游戏层的默认单位格面积)用来对应整个GameLayer的大小：
+		this.gameMap=new boolean[10][18];
+
+		this.setcurrentLevel(0); 
+（这里用setcurrentLevel方法而不是直接给成员变量赋值是由于此方法中还设置了对游戏主线程睡眠时间的计算,也需要被重新设定;）
+
+		this.curretPoint=0;
+
+		this.currentRemovedLine=0;
+
+		this.pause=false;
+
+	}
+
+
+3.保存数据库数据的setDbRecord方法：
+
+        public void setDbRecord(List<Player> dbRecord) {
+
+//为了保证LayerDataBase中在循环绘制5条值槽时不会报数组越界错误,这里将对传入DTO层保存的数据库Player列表进行元素数量校正：
+
+//如果传入DTO层保存的数据库Player列表为空,则为其初始化一个新的ArrayList<Player>(5)地址;
+		if(dbRecord==null){
+			dbRecord=new ArrayList<Player>(5);
+		}
+
+//当传入DTO层保存的数据库Player列表中元素个数小于5时不断为其添加属性为("NO DATA",0)的对象,直至最终数据列表被填满5个元素对象;
+		while(dbRecord.size()<5){
+			dbRecord.add(new Player("NO DATA",0));
+		}
+
+//结合Player类中对Comparable接口及其方法的实现将经过元素数量校正的Player列表中的对象进行按分数从大到小排序;
+		Collections.sort(dbRecord);
+		this.dbRecord = dbRecord;
+	}
+
+
+4.保存本地磁盘数据的setDbRecord方法：
+
+         public void setDiskRecord(List<Player> diskRecord) {
+
+		//为了保证LayerDisk中在循环绘制5条值槽时不会报数组越界错误,这里将对传入DTO层保存的本地磁盘Player列表进行元素数量校正：
+		
+		//如果传入DTO层保存的本地磁盘Player列表为空,则为其初始化一个新的ArrayList<Player>(5)地址;
+		if(diskRecord==null){
+			diskRecord=new ArrayList<Player>(5);
+		}
+		
+		//当传入DTO层保存的本地磁盘Player列表中元素个数小于5时不断为其添加属性为("NO DATA",0)的对象,直至最终数据列表被填满5个元素对象;
+		while(diskRecord.size()<5){
+			diskRecord.add(new Player("NO DATA",0));
+		}
+		
+		//结合Player类中对Comparable接口及其方法的实现将经过元素数量校正的Player列表中的对象进行按分数从大到小排序;
+		Collections.sort(diskRecord);
+		this.diskRecord = diskRecord;
+	}
+
+
+
+
+***********************   柒.Player   ***********************
+
+(Player)
+
+   玩家层是属于dto包中的一个类,也属于数据传输对象,它和GameDto协同作用,因为数据库和本地磁盘中玩家信息不可能各自以他们自己类的形式保存,这样既不利于GameControl读取它们的信息,也不利于DTO层中保存它们的信息;于是Player类规定了所有玩家数据的形式;因此Player类可以被视为是一个保存和提取玩家数据的规则和工具;
+
+<1>Player实现Comparable接口是为了借助其内部的排序方法使得编程者可以在之后调用一个静态方法Collections.sort();来达到对类对象的排序工作;(此程序中将会在GameDto中存储数据库/本地磁盘对象时对Player列表中的对象进行排序，以达到显示在LayerDataBase和LayerDisk中的分数是由大到小排序的效果;)
+
+注意1：Comparable<Player> 后面的泛型参数代表Comparable内部排序方法运行时被比较的对象类型,而this.实现Comparable接口的类对象是调用比较方法的对象;(在一般情况下这两个对象的类型是相同的;除非要比较两个不同类的对象,不过这样从一定程度上违反了面向对象的逻辑;)
+  注意2：实现了Comparable接口就必须实现它的抽象方法Public int compareTo(待比较的对象类型); 这里的参数必须与实现Comparable时的泛型对象类型一致,最重要的是这个方法允许编程者决定排序的规则;
+
+<2>Player实现Serializable序列化接口是为了之后I/O数据读取Player对象的时候可以实现序列化,因为JVM不会直接读写一个抽象的对象,它只识别计算机语言,而把抽象的JAVA面向对象语言转化为计算机语言就需要序列化;
+
+  
+
+//玩家姓名的成员变量： name;
+
+//玩家分数的成员变量： point;
+
+1.构造方法：
+
+  public Player(String name,int point){
+		super();
+		this.name=name;
+		this.point=point;
+	}
+
+2.name/point的setter/getter方法：
+
+	public void setName(String name) {
+		this.name = name;
+	}
+        
+        public String getName() {
+		return name;
+	}
+
+        public void setPoint(int point) {
+		this.point = point;
+	}
+
+	public int getPoint() {
+		return point;
+	}
+
+
+3.实现Comparable接口的对象比较方法：
+(此方法原理：返回值大于0时Comparable会认定this.类对象大于参数中的被比较对象;返回值为0时相等;返回值小于0时this.类对象小于参数中的被比较对象;又由于Comparable的排序时默认从小到大的,所以如果编程者想要从大到小排序,可以利用例如：在this.类对象大于参数中的被比较对象时返回一个小于0的值来"欺骗"Comparable的排序方法,让它所认定的从小到大变为编程者期望的从大到小;)
+
+        public int compareTo(Player pla) {
+		return pla.point-this.point;  //设置为从大到小排序;
+	}
+
+
+
+
+************************   捌.GameAct   **********************
+
+(GameAct)
+
+游戏动作实体块：
+GameAct块主要负责在GameService调用了游戏动作方法时来判断此时actPoints里方块能否进行运动(越界判断)并把更新后的方块状态继续保存在actPoints对象里,其实也就是保存在了DTO层中,等待PanelOfGame中的LayerGame图层的访问;总的来说GameAct包含了方块：绑定的编号;能不能动;能怎么动;动作以后的状态等所有信息;
+
+ GameAct类主要声明了：
+(1)一个可以储存四个坐标元素的Point数组对象用来存储当前方块组合在游戏层出现的位置：Point[] actPoints;
+
+(2)静态List集合：TYPE_CONFIG;GameAct被加载时（也就是被调用或是初始化对象的时候）静态代码块会先被执行，其中TYPE_CONFIG保存并初始化了一个ArrayList集合并把每一个代表一种经典方块组合的Point[]坐标数组（一共7种）用add方法有序的加入到ArrayList集合中作为它的一个元素;
+
+(3)一个方块类型变量typeCode用来存储一个新的方块组合生成时它所对应的类型代码(和它的形状/颜色绑定了);以及这个变量的getter方法（在LayerGame绘制方块时需要取得这个代码给方块组合选取颜色); 
+
+(4)init 刷新方块方法，用来保存刷新方块的类型代码到成员变量typeCode;根据类型代码刷新一个新的方块组合保存在actPoints坐标数组中;
+
+(5)方块的移动、旋转、判断是否越界等实体运动的相关方法;
+
+(注意：由于一旦在init方法中刷新了一个新的方块组合,其类型对应的具体坐标就被保存在actPoints数组中了,之后在LayerGame中绘制组合方块也是直接通过读取actPoints中各元素坐标来进行的;所以声明typeCode变量的意义：一是能够在刷新一个新的方块组合时利用typeCode对应的编号方便从TYPE_CONFIG列表中选取一个经典方块组合;二是让LayerGame在利用毛坯方块图片绘制单个方块时方便选取方块类型对应的颜色;而LayerNext层中绘制的下一个方块组合图片则会直接利用getNext方法通过DTO层获得;)
+
+
+1.静态代码块：
+  static{  
+
+       //虽然ArrayList是自动扩展的,但是这里给出的长度可提高效率;
+        TYPE_CONFIG=new ArrayList<Point[]>(7); 
+        
+	
+    //为了旋转方法编写起来更加方便,这里把每一个图形默认的中心点坐标放在数组的第一个元素;
+        TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(3,0),new Point(5,0),new Point(6,0)});
+
+	TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(3,0),new Point(5,0),new Point(4,1)});
+
+	TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(3,0),new Point(5,0),new Point(3,1)});
+
+	TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(5,0),new Point(3,1),new Point(4,1)});
+
+	TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(5,0),new Point(4,1),new Point(5,1)});
+
+	TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(3,0),new Point(5,0),new Point(5,1)});
+
+	TYPE_CONFIG.add(new Point[]{new Point(4,0),new Point(3,0),new Point(4,1),new Point(5,1)});
+
+
+}
+
+
+2.构造方法： 
+
+//在游戏层指定位置初始化一个指定形状的经典方块组合,这里的方块类型代码参数由初始化GameAct对象的GameService给出的一个0-6的随机数决定：
+public GameAct(int typeCode){
+     this.init(typeCode);
+}
+
+
+3.方块刷新方法：
+public void init(int typeCode){
+
+    //保存了当前被初始化的方块组合特定的代码：
+     this.typeCode=typeCode; 
+
+     错误代码：actPoints=TYPE_CONFIG.get(actCode); 
+    (特别注意：这里这条语句是错误的,因为通过引用传递,这里把保存在ArrayList中Point静态数组对象的地址赋给了actPoints,也就是说之后任何对actPoints的操作都会直接改变Point数组对象中的坐标内容,当再次使用init方法时就无法获得真正的新图形了！所以如果需要把一个对象中的内容赋给一个变量保存，而不是把这个对象的地址传递过去，就需要定位到对象中的属性然后赋给那个变量;就像在下式的赋值中，把TYPE_CONFIG列表中的坐标数组元素直接取出赋值就是引用传递，而不是赋值属性;而把坐标数组元素中的坐标对象取出也属于引用传递，因为坐标数组元素中保存的仍旧是地址——坐标对象的地址，因此在之后的程序中：actPoints[i]=new Point(temp[i].x,temp[i].y);是直接将对象中的属性赋给变量保存,所以不存在地址的传递;) 
+     
+    //用中间临时对象获取引用传递：
+      Point[] temp=TYPE_CONFIG.get(typeCode);  
+
+    //让actPoints坐标数组指向一个新的堆空间：
+	actPoints=new Point[temp.length];
+
+    //循环利用新的坐标对象将中间临时对象指向的堆内存中的坐标对象的x/y信息保存在其中并赋给actPoints坐标数组：
+      for(int i=0;i<temp.length;i++){
+	actPoints[i]=new Point(temp[i].x,temp[i].y);
+	}
+}
+
+
+
+4.方块组合移动方法：
+
+//这里返回布尔类型的原因是为GameService中的向下移动方法会调用此移动方法并且根据返回值判断是否要触发方块触底后移动完成，进而调用gameMap二维数组保存堆积方块坐标：
+
+public boolean move(int moveX,int moveY,boolean[][]gameMap){
+
+  //遍历取得每一个坐标元素在移动后的X/Y坐标值：
+  for(int i=0;i<actPoints.length;i++){
+		int newX=actPoints[i].x+moveX;
+		int newY=actPoints[i].y+moveY;
+        //越界判断：
+        if(isOverMap(newX,newY,gameMap)){ 
+              return false;
+    }
+}       
+  //如果方块组合中的4个方块坐标在移动后都无越界现象，则将它们移动后的坐标更新到actPoints数组中保存;
+	for(int i=0;i<actPoints.length;i++){
+		actPoints[i].x+=moveX;
+		actPoints[i].y+=moveY;
+  }
+	return true;
+}
+
+
+
+5.方块组合旋转方法：
+
+ //这里默认为顺时针旋转，参照了一个坐标轴内90度旋转的通用公式;
+（旋转公式及中心点的选取参照: graphics/other/rotate.png)
+
+ //参数中传递了一个堆积方块地图二维数组对象是为把对堆积方块也加入到越界判断的条件之中：
+ public void rotate(boolean[][]gameMap){
+
+ //判断当前方块类型是否为正方形方块，如果是，它将不被允许旋转：
+  if(this.typeCode==4){
+		return;
+	}
+
+  //由于方块数组的第一个元素为中心点,所以不需要旋转,这里的遍历从第二个元素开始;遍历取得每一个坐标元素在旋转后的X/Y坐标值: 
+  for(int i=1;i<actPoints.length;i++){
+  int newX=actPoints[0].y+actPoints[0].x-actPoints[i].y;
+  int newY=actPoints[0].y-actPoints[0].x+actPoints[i].x;
+
+  //越界判断：
+  if(isOverMap(newX,newY，gameMap)){
+			return;
+		}
+	}
+
+//如果方块组合中的4个方块坐标在旋转后都无越界现象，则将它们移动后的坐标更新到actPoints坐标数组中保存:
+   for(int i=1;i<actPoints.length;i++){
+
+    int newX=actPoints[0].y+actPoints[0].x-actPoints[i].y;
+    int newY=actPoints[0].y-actPoints[0].x+actPoints[i].x;
+    actPoints[i].x=newX;
+    actPoints[i].y=newY;
+
+	}
+}
+
+6.越界判断方法：
+
+     //4个变量限制了方块单位坐标无法越过游戏层的X轴（0-9）10个方格单位长度、Y轴的（0-17)18个方格单位长度;
+        private static int MIN_X=0;
+	private static int MAX_X=9;
+	private static int MIN_Y=0;
+	private static int MAX_Y=17;
+
+
+private boolean isOverMap(int x,int y,boolean[][]gameMap){
+
+   return x<MIN_X||x>MAX_X||y<MIN_Y||y>MAX_Y||gameMap[x][y];
+
+}
+
+
+*********************   玖.FrameOfGame   ********************
+
+(FrameOfGame)
+
+游戏的显示框架窗口(继承了JFrame类),装载了游戏面板;
+
+FrameOfGame的构造方法：
+public FrameOfGame(PanelOfGame panelofgame){
+
+对游戏主窗口进行了初始化设置的代码....
+....................................
+....................................
+
+this.setContentPane(panelofgame);
+	   this.setVisible(true);
+}
+
+
+
+*********************   拾.PanelOfGame   ********************
+
+(PanelOfGame)
+
+游戏面板，所有实体层都将在游戏面板的基础上绘制;PlayerControl玩家控制从某种意义上来看也是游戏面板的一部分,它的按键监听器就装在游戏面板上;而它的paintComponent方法更是把玩家控制实时反映在游戏窗口中的核心;
+
+//存放将在游戏面板上绘制的各个层的对象数组：
+    private Layer[]layarray=null; 
+（如果要反复调用同一个类生成对象,或者说反复用到同一类东西时,就需要用到数组;）
+
+//开始按钮对象： JButton btnStart; 
+
+//start按钮图片ImageIcon对象：
+ ImageIcon BTN_START=new ImageIcon("graphics/other/start.png");
+
+
+
+1.PanelOfGame的构造方法：
+
+public PanelOfGame(GameDto gamedto){
+
+                //设置布局管理器为自由布局
+                (可以对面板中的组件自由设置大小位置)
+                this.setLayer(null);
+
+		//初始化组件
+		initComponent();
+
+		//初始化层
+    	        initLayer(gamedto));
+    }
+
+
+2.初始化层方法：
+     private void initLayer(GameDto gamedto){
+
+       //将Main方法中初始化了的dto对象传递给了Layer抽象类中保存,使得它的各个子类都拥有了访问dto中的游戏数据的权限;
+
+        Layer.setDto(gamedto); 
+
+       //初始化layarray数组中的每一个元素----也就是每一个子Layer类的带x,y,w,h参数的一个匿名对象,为初始化并绘制这些Layers做准备;
+
+	layarray=new Layer[]{
+        new LayerBackGround(0,0,0,0), 
+        new LayerDataBase(40,32,334,279),
+    	new LayerDisk(40,343,334,279),
+    	new LayerGame(414,32,334,590),
+    	new LayerButton(788,32,334,124),
+    	new LayerNext(788,188,176,116),
+    	new LayerLevel(964,188,158,116),
+    	new LayerPoint(788,368,334,168)
+  	new LayerAbout(788,528,334,94)
+        };
+}
+
+
+3. 初始化游戏组件方法：
+    private void initComponent(){
+	
+        //初始化start按钮
+	this.btnStart=new JButton(BTN_START);
+
+	//设置按钮位置
+	btnStart.setBounds(960,50,90,90);
+	
+	//添加按钮到面板
+	this.add(btnStart);
+}
+
+
+4.按钮功能的启动/关闭：
+public void buttonSwitch(boolean onOff){
+	this.btnStart.setEnabled(onOff);
+}
+
+
+5. 安装玩家控制器(传递监听信息给PlayerControl接收)：
+   public void setPlayerControl(PlayerControl playercontrol){
+        //在游戏面板中安装按键监听：
+	this.addKeyListener(playercontrol);
+        //在游戏面板中安装(按钮)动作监听：
+        this.btnStart.addActionListener(playercontrol);
+}
+
+
+6.一旦panelofgame对象被装入FrameOfGame对象后,其从JFrame中继承的setContentPane方法将触发PanelOfGame中从JPanel中继承来的被覆写了的paintComponent（Graphics g）方法被自动调用一次：
+
+public void paintComponent(Graphics g){
+
+//先调用基类方法,为了得到原本方法中的刷新画面的前处理;
+super.paintComponent(g);
+
+//利用各个Layer子类中的覆写其抽象父类Layer中的paint(g)方法刷新游戏画面;
+for(int i =0;i<layarray.length;layarray[i++].paint(g));
+
+//此Panel需求得到焦点,为之后在面板上获得键盘监听做准备;
+this.requestFocus(); 
+
+}
+
+  初始化游戏面板就同时初始化了各个需要被显示在游戏面板上的子Layer类对象，子Layer类对象也能自行访问dto层中的内容了，（这就是PanelOfGame要求访问GameDto的意义）,并且之后paintComponent方法也能够利用已经初始化好的layarray层数组在游戏面 板上依次绘制最新的所有图层；
+
+
+
+
+********************   拾壹.PlayerControl   *******************
+
+(PlayerControl)
+
+玩家控制器类:继承了KeyAdaptor键盘监听适配器类/实现了ActionListener接口并覆写了键盘按下的监听方法:KeyPressed（keyEvent e）/动作事件监听方法：actionPerformed(ActionEvent e),以供游戏面板中的setPlayerControl方法在main方法中连接玩家控制器的监听装置到游戏面板:
+
+(这里不需要实现KeyListener接口,因为KeyAdapter已经实现了KeyListener,我们只需要选择是否覆写其已经实现的某些方法;由于无法多继承,这里选择了实现ActionListener接口,因为KeyListener接口中需要实现的方法过多,但此处用不到;）
+
+
+1.构造方法：
+
+public PlayerControl(GameControl gamecontrol){
+		this.gamecontrol=gamecontrol;
+	}
+
+
+
+2.通过游戏面板接收(按钮)动作事件并由此触发GameControl中的游戏开始动作：
+	public void actionPerformed(ActionEvent e) {
+		this.gamecontrol.startGame();
+	}
+
+
+
+3.通过键盘按下事件将按键代码作为参数传递给GameControl的actionByKeyCode方法：
+
+public void keyPressed(KeyEvent e) { 
+
+     this.gamecontrol.actionByKeyCode(e.getKeyCode());
+
+
+
+( 通过键盘按下事件侦测玩家给出的移动指令：
+ //由于switch case的枚举方法在结构上看来不够专业,也不便于维护/修改，所以这里用另一种方法来对监听到的玩家按键信息进行处理： 
+
+  public void keyPressed(KeyEvent e) { 
+
+    switch(e.getKeyCode()){
+
+//如果KeyEvent监听到代表向上键的KeyCode的常量,将向上操作信息传给GmeControl块:
+case KeyEvent.VK_UP: 
+		this.gamecontrol.keyUp();
+		break;	
+
+//如果KeyEvent监听到代表向W键的KeyCode的常量,将向上操作信息传给GmeControl块:
+case KeyEvent.VK_W: 
+		this.gamecontrol.keyUp();
+		break;	
+
+//如果KeyEvent监听到代表向下键的KeyCode的常量,将向下操作信息传给GmeControl块:
+case KeyEvent.VK_DOWN:
+		this.gamecontrol.keyDown();
+		break;	
+
+//如果KeyEvent监听到代表S键的KeyCode的常量,将向下操作信息传给GmeControl块:
+case KeyEvent.VK_S: 
+		this.gamecontrol.keyDown();
+		break;	
+
+//如果KeyEvent监听到代表左键的KeyCode的常量,将向左操作信息传给GmeControl块:
+case KeyEvent.VK_LEFT: 
+		this.gamecontrol.keyLeft();
+		break;
+
+//如果KeyEvent监听到代表A键的KeyCode的常量,将向左操作信息传给GmeControl块:
+case KeyEvent.VK_A: 
+		this.gamecontrol.keyLeft();
+		break;
+
+//如果KeyEvent监听到代表右键的KeyCode的常量,将向右操作信息传给GmeControl块:
+case KeyEvent.VK_RIGHT: 
+		this.gamecontrol.keyRight();
+		break;
+
+//如果KeyEvent监听到代表D键的KeyCode的常量,将向右操作信息传给GmeControl块:
+case KeyEvent.VK_D: 
+		this.gamecontrol.keyRight();
+		break;
+
+		default:
+		break;
+    }
+} )
+
+
+
+**********************   拾贰.Layer(s)   ********************
+
+<一>（Layer）
+
+Layer抽象类提供了：
+
+//createWindow方法相关变量：
+
+        //图层框架中图片的内边距:
+	protected static final int PADDING = 16;
+
+        //图层框架的边框宽度:
+	protected static final int SIZE = 7; 
+
+	//图层中需要显示的框架原始图片:                           
+	private static final Image INNERWINDOW=new ImageIcon            ("graphics/window/Window.png").getImage(); 
+
+	private static final int INNERWINDO_W =                         INNERWINDOW.getWidth(null);//框架宽度;
+	private static final int INNERWINDO_H =                         INNERWINDOW.getHeight(null);//框架高度;
+
+	protected int x; //层边框显示在Panel中的起始横坐标;
+	protected int y; //层边框显示在Panel中的起始纵坐标;
+        protected int w; //需要层边框实际显示的宽度; 
+        protected int h; //需要层边框实际显示的高度;
+
+//drawRect方法相关变量：
+
+	//根据图层的w值决定的矩形值槽默认宽度:
+        protected final int RECT_W;
+
+ 	//值槽颜色填充图片(是一张固定高度和宽度的颜色渐变的矩形图片)：
+        private static final Image_IMG_RECT=new ImageIcon               ("graphics/window/rect.png").getImage();
+
+	//值槽颜色填充图片高度：
+        protected static final int IMG_RECT_H=IMG_RECT.getHeight(null);
+
+	//值槽的高度：
+    protected static final int RECT_H=IMG_RECT_H+4;
+
+	//值槽颜色填充图片宽度：
+        protected static final int IMG_RECT_W=IMG_RECT.getWidth(null);
+
+	//设置层中文字绘制的默认字体：
+        private static final Font DEF_FONT=new Font("黑体",Font.BOLD,25);
+
+
+//drawNumberLeftPad方法相关变量：
+    
+    //数字图片(是一张由连续数字0-9组成的矩形图片)：
+    private static final Image IMG_NUMBER=new ImageIcon            ("graphics/string/num.png").getImage();
+
+    //单个数字切片的宽度; 
+    protected static final int IMG_NUMBER_W=IMG_NUMBER.getWidth(null)/10; 
+
+    //单个数字切片的高度;
+    private static final int IMG_NUMBER_H=IMG_NUMBER.getHeight(null);
+
+
+1.帮助Layer子类初始化的含有4个参数的构造方法:
+  protected Layer(int x,int y ,int w, int h){
+    	this.x=x;
+    	this.y=y;
+    	this.w=w;
+    	this.h=h;
+        //初始化经验值槽的宽度(由于需要先初始化this.w,所以必须放在构造方法里初始化):
+        RECT_W=this.w-(PADDING<<1);
+    }
+
+
+2.提供了一个createWindow(Graphics g)方法，它利用参数g，相当于一支画笔，用它在游戏面板上绘制Layer的内容；此方法多次利用g.drawImage方法对所选图片分块其进行大小位置的设定，使得只需给出4个开放的待指定参数：x,y,w,h(Layer图片在游戏面板中显示的起始x,y坐标;图片显示的大小width,height)就能让选定的Layer图片（此处为游戏面板中各个Layer的边框显示）在游戏面板中正确显示:
+
+protected void createWindow(Graphics g){ 
+
+  //左上：
+    	g.drawImage(INNERWINDOW, x, y, x+SIZE, y+SIZE, 0, 0, SIZE, SIZE, null); 
+  //中上：
+    	g.drawImage(INNERWINDOW, x+SIZE, y, x+w-SIZE, y+SIZE, SIZE, 0, INNERWINDO_W-SIZE, SIZE, null); 
+  //右上：
+    	g.drawImage(INNERWINDOW, x+w-SIZE, y, x+w, y+SIZE, INNERWINDO_W-SIZE, 0, INNERWINDO_W, SIZE, null);
+  //左中：
+    	g.drawImage(INNERWINDOW, x, y+SIZE, x+SIZE, y+h-SIZE, 0, SIZE, SIZE, INNERWINDO_H-SIZE, null);
+  //中：
+    	g.drawImage(INNERWINDOW, x+SIZE, y+SIZE, x+w-SIZE, y+h-SIZE, SIZE, SIZE, INNERWINDO_W-SIZE, INNERWINDO_H-SIZE, null);
+  //右中：
+    	g.drawImage(INNERWINDOW, x+w-SIZE, y+SIZE, x+w, y+h-SIZE, INNERWINDO_W-SIZE, SIZE, INNERWINDO_W, INNERWINDO_H-SIZE, null);
+  //左下：
+    	g.drawImage(INNERWINDOW, x, y+h-SIZE, x+SIZE, y+h, 0, INNERWINDO_H-SIZE, SIZE, INNERWINDO_H, null);
+  //中下：
+    	g.drawImage(INNERWINDOW, x+SIZE, y+h-SIZE, x+w-SIZE, y+h, SIZE, INNERWINDO_H-SIZE, INNERWINDO_W-SIZE, INNERWINDO_H, null);
+  //右下：
+    	g.drawImage(INNERWINDOW, x+w-SIZE, y+h-SIZE, x+w, y+h, INNERWINDO_W-SIZE, INNERWINDO_H-SIZE, INNERWINDO_W, INNERWINDO_H, null);
+
+
+(一共分成9块显示，除了四个角的显示按照切割原图片后四个角的原比例显示，上下的横条框可以根据w值横向拉伸/左右的纵条框可以根据h值纵向拉伸,中间一块空白内容可以根据w,h随意拉伸) 
+
+}
+
+
+3.抽象类Layer为其Layer子类提供了抽象方法：
+
+public abstract void paint(Graphics g); 
+Layer类的各个子类利用覆写此方法来先调用this.createWindow(g)设置由子Layer类初始化时输入的4个参数决定的边框图形，再通过g.drawImage方法绘制从Dto层中获取的要求被置于此边框中的游戏相关图形及它们在游戏面板中的要求被显示位置；
+
+而此paint(Graphics g)方法将在paintComponent（Graphics g）里的for循环遍历初始化Layer子类对象的语句：
+for(int i=0;i<layarray.length;layarray[i++].paint(g));
+中被调用来重新绘制面板中的包括边框和各种游戏相关图形以使游戏画面保持最新;
+
+4.为需要在其绘图层上显示数字图片的子类提供了一个通用的左填充（右缩进）的绘制方法（参数分别为：
+  数字图片需要在层上显示的x坐标;
+  数字图片需要在层上显示的y坐标;
+  需要显示的数字;
+  此层中允许显示的数字最大位数;
+  画笔对象）:
+
+   protected void drawNumberLeftPad(int x,int y,int num,int maxBit,Graphics g){
+
+     //将需要绘制的数字转为String类型：
+     String strNum=Integer.toString(num);
+     
+     //很显然maxBit-strNum.length()是需要在左边被空出的位数,当i第一次等于这个值,也就意味着前面已经空出了i位不显示的空值,接下来可以开始显示位数了:
+     for(int i=0;i<maxBit;i++){ 
+        if(i>=maxBit-strNum.length()){ 
+
+        //这句语句其实就是让i的值第一次能让数字开始显示时idx的值为0,然后递增以便遍历输出strNum的每一位数:
+        int idx=i+strNum.length()-maxBit;
+
+        //取得允许被输出的每一位数;
+	int bit=strNum.charAt(idx)-'0';
+
+	//开始绘制符合条件输出的数字;
+        //为了使1位数以上的等级的各位不显示在同一个位置,这里以+IMG_NUMBER_W*i来获得偏移量:
+	g.drawImage(IMG_NUMBER, 
+        this.x+x+IMG_NUMBER_W*i, 
+        this.y+y,  
+	this.x+x+IMG_NUMBER_W*i+IMG_NUMBER_W,
+        this.y+y+IMG_NUMBER_H, 
+	bit*IMG_NUMBER_W, 0,   //bit这里就是需要显示的数字
+	(bit+1)*IMG_NUMBER_W, IMG_NUMBER_H, 
+	null);
+
+            }
+        }
+        
+5.声明一个使所选图片绘制在所处Layer正中间的方法：
+  private void drawImageInCenter(Image img, Graphics g){
+     int imgW=img.getWidth(null);
+     int imgH=img.getHeight(null);
+
+     //图片显示的x坐标：图层宽度减去图片宽度的一半,当然不能忘了加上图层在面板中显示的x坐标;
+     int imgX=this.x+((this.w-imgW)>>1); 
+
+     //图片显示的y坐标：图层高度减去图片高度的一半,当然不能忘了加上图层在面板中显示的y坐标;
+     int imgY=this.y+((this.h-imgH)>>1);
+
+     //图片不需要拉伸或者切割，所以只需要4个参数;
+     g.drawImage(img, imgX, imgY, null);
+}
+
+
+
+6.//绘制值槽方法(提供了绘制值槽边框、绘制根据比值变换颜色的颜色填充条、值槽中标题、值槽中靠右缩进的文字/数字显示;参数precentage为当前值槽中数值与值槽总值的百分比）：
+
+protected void drawRect(int rectY,String title,String number,double percentage,Graphics g){
+
+	//设置简化变量：	
+	int rect_x=this.x+PADDING; //值槽x坐标;
+	int rect_y=this.y+rectY;   //值槽y坐标;
+	
+	
+	//绘制值槽边框：
+	
+	//画笔先设置为黑色：
+	g.setColor(Color.BLACK);
+	//利用g.fillRect方法绘制一个矩形,参数为：矩形的起始x/y坐标,矩形的宽/高：
+	g.fillRect(rect_x, rect_y, this.RECT_W, IMG_RECT_H+4);
+	
+	//画笔在设置为白色,绘制一个各边距小1个像素的矩形：
+	g.setColor(Color.WHITE);
+	g.fillRect(rect_x+1, rect_y+1, this.RECT_W-2, IMG_RECT_H+2);
+	
+	//画笔再设置为黑,绘制一个各边距小2个像素的矩形,结合上面的两次绘制得到一个黑白边框的矩形条： 
+	g.setColor(Color.BLACK);
+	g.fillRect(rect_x+2, rect_y+2, RECT_W-4, IMG_RECT_H);
+	
+
+	//绘制值槽颜色填充矩形图片：
+	
+	//现有经验值宽度：
+	int w = (int)(percentage*(RECT_W-4));
+
+	//现有经验值在颜色填充参考图片(是一张从左到右从red 255--green 255渐变的宽度为255像素的矩形)中所代表的宽度：
+	int subIdx=(int)(percentage*IMG_RECT_W)-1;
+（注意：这里-1的目的是,当percentage为1时在颜色填充参考图片位置的取得x坐标：subIdx——subIdx+1像素的颜色时已经越出了图片范围;）
+
+	//根据现有经验值所对应的颜色在值槽中显示填充槽：
+	g.drawImage(IMG_RECT,
+			rect_x+2,rect_y+2,
+			rect_x+2+w,rect_y+2+IMG_RECT_H,
+			subIdx,0,subIdx+1,IMG_RECT_H,
+			null);
+
+        //绘制经验值条中的标题：
+	g.setColor(Color.WHITE);
+	g.setFont(DEF_FONT);
+	g.drawString(title, rect_x+5, rect_y+25);
+
+        //绘制值槽中靠右缩进的文字/数字显示：
+	//如果参数中的number项不为null,那么利用左填充(靠右缩进)方法在经验值条中显示number内容;
+	if(number!=null){
+		String temp="";
+		for(int i=0;i<5;i++){
+		if(i<5-number.length()){
+			temp=temp+" "; //空出一个空位(左填充);
+		  }else{
+			  break;  //左填充完成;
+		  }
+	   }
+		temp=temp+number; //左填充已完成,将要显示的数字加在填充之后;
+		g.drawString(temp,rect_x+220,rect_y+25);
+	}
+}
+
+
+
+//补充：
+//经典的血条颜色渐变显示方法： 
+//利用分段函数根据现有经验占升级所需总经验的比例来取得此经验在条中显示的颜色;但是由于这个方法比较旧了,并且不太好在值槽上添加特殊视化效果,所以这里废弃：
+@Deprecated //利用此语句表示此方法在此程序中被废除;
+private Color getCurrentColor(double exp,double maxExp){
+	int colorR=0;
+	int colorG=255;
+	int colorB=0; //此经验条未用到蓝色数值;
+	double halfExp=maxExp/2;
+	
+	//经验过半时,所超出中线的经验与经验上限一半的比例越高colorR值就越小,当现有经验为maxExp时,colorG值为255,colorR为0:
+	if(exp > halfExp){  
+		colorR=255-(int)((exp-halfExp)/(maxExp/2)*255);
+		colorG=255;
+
+	//经验小于等于经验上限的一半时,现有经验与经验上限一半的比例越高colorG值就越大,当现有经验为0时,colorR值为255,colorG值为0: 
+	}else{
+		colorR=255;
+		colorG=(int)(exp/(maxExp/2)*255);
+	}
+	//返回一个Color对象,其显示颜色由红/绿/蓝三种颜色的数值决定(0为无此颜色,255为将此颜色显示完全);
+	return new Color(colorR,colorG,colorB);
+}
+
+//   getCurrentColor颜色选取方法加上绘制矩形方法就能绘制经典血条方案:
+//   int 消去行数=this.dto.getCurrentRemovedLine();
+//   int w = (int)((double)rmline%(升级所需消去行数)/(升级所需消去行数)*(经验值条总宽度));
+//   g.setColor(this.getCurrentColor(w,经验值条总宽度));
+//   g.fillRect(经验值条x坐标,经验值条y坐标,w,经验值条高度);
+
+
+
+////////////////////////////////////////////////////////////
+
+<二> (LayerGame)
+
+游戏面板中的游戏层：
+LayerGame是Layer抽象类的其中一个子类,它负责绘制所有游戏层中的内容，可以说是整个游戏的中心绘制部分;
+
+//得到待切割的方块原始图片对象: private static final Image ACT;
+	
+//阴影原始图片对象：private static final Image SHADOW;
+
+//显示暂停图片对象：private static final Image PAUSE;
+	
+
+
+1.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+		}
+ 
+
+2.绘制单个方块的通用方法：
+
+//根据所给颜色绘制一个正方形块（参数为此方块在游戏层框架中的x坐标，y坐标，方块类型代号，画笔对象用来引用g.drawImage方法）：
+ private void drawSingleSquare(int x, int y,int，typeCode,   Graphics g){
+
+     //因为方块单位位移像素为32，所以这里用常量SIZE_ROL=5；来规定向左位移的位数:5,也就是2^5=32;再利用原始图片ACT来切割出一个小方块模型,并利用组合方块坐标数组中方块的单位坐标信息乘以实际游戏层边框X轴,Y轴对应每个单位方块的长度像素数值，得到能够正确在游戏层中显示的方块，这要注意不能忘加上游戏层本身在游戏窗口中显示的x,y坐标: 
+     g.drawImage(ACT, 
+	this.x+(x<<SIZE_ROL)+SIZE, 
+	this.y+(y<<SIZE_ROL)+SIZE, 
+	this.x+(x+1<<SIZE_ROL)+SIZE, 
+	this.y+(y+1<<SIZE_ROL)+SIZE,  
+	(typeCode+1)<<SIZE_ROL, 0, (typeCode+2)<<SIZE_ROL, 1<<SIZE_ROL, null); 
+        }
+ //按照类型切割方块原型图片以获得不同的颜色;
+		
+
+
+
+3.LayerGame覆写了Layer父类的paint(Graphics g)方法：
+
+public void paint(Graphics g){
+
+（1） 边框绘制；
+      this.createWindow(g); 
+
+（2） 获得GameAct类中的组合方块坐标数组：
+      Point[] points=this.dto.getGameact().getActPoints(); 
+
+（3） 根据DTO层中的游戏是否开始boolen变量判断时候要绘制游戏动作图形：
+      if(this.dto.isStart()){
+
+ <1>  绘制阴影：
+      this.drawShadow(points,g);
+
+ <2>  绘制活动方块组合：
+      this.drawMainAct(points,g);
+
+	}
+
+（4） 绘制游戏地图(无论游戏是否处于开始状态都会绘制地图)：
+      this.drawMap(points,g);
+(这里将绘制游戏地图方法写在判断游戏是否处于开始状态之外是因为,当游戏结束时还需要休息当前的游戏地图，而游戏未开始时地图为空,所以就算绘制也不会在游戏面板中显示内容)
+}
+
+（5） 暂停(写在绘制方法的最后是为了让它显示在游戏层的最上层)： 
+			if(this.dto.isPause()){
+				this.drawImageInCenter(PAUSE,g);
+			}
+
+
+
+4.绘制阴影的方法：
+(阴影就是玩家控制的方块所在坐标的Y轴延伸至充满整个LayerGame,目的是方便玩家判断下落的位置，并提供开启和关闭此阴影的功能)
+	private void drawShadow(Point[] points,Graphics g) {
+		if(!this.dto.isShowShadow()){
+			return;
+		}
+
+            int leftX= 9; //阴影的起始左坐标,对应游戏层的MAX X坐标值,会根据所得方块不断向左移;
+            int rightX=0; //阴影的起始右坐标,会根据所得方块不断向右移;
+
+            for(Point p:points){
+
+        	//遍历方块组合中的每一个方块求出最靠左的X坐标;
+        	leftX=p.x<leftX? p.x :leftX;
+
+        	//遍历方块组合中的每一个方块求出最靠右的X坐标;
+        	rightX=p.x>rightX? p.x:rightX;
+            }
+
+            //绘制阴影：
+            g.drawImage(SHADOW,
+                        this.x+SIZE+(leftX<<SIZE_ROL),
+                        this.y+SIZE, 
+                        (rightX-leftX+1)<<SIZE_ROL, 
+                        this.h-(SIZE<<1),
+                        null);
+	}
+
+
+5.绘制动作方块：
+   private void drawMainAct(Point[] points,Graphics g) {
+		
+    //获得刷新方块的类型编号(为了给不同类型的方块不同的颜色显示)：
+    int typeCode=this.dto.getGameact().getTypeCode();
+			
+    //循环绘制4个方块：
+    for(int i=0;i<points.length;i++){    
+    drawSingleSquare(points[i].x, points[i].y,typeCode, g);
+
+		}			
+    }
+
+
+6.绘制地图(游戏区域信息)：
+         private void drawMap(Point[] points,Graphics g) {
+
+                //获取游戏地图二维坐标数组;
+		boolean[][]map=this.dto.getGameMap();
+			
+		//计算当前玩家分数对应的堆积方块颜色：
+		int colorIdx =this.dto.getcurrentLevel()%8;
+
+                //如果此时游戏处于非开始状态,则把堆积方块颜色置为                白色(游戏结束时需要显示的堆积方块颜色)：
+		if(!this.dto.isStart()){
+			colorIdx=8; //黑色
+		}
+
+		//一列一列打印地图:
+		for(int x=0;x<map.length;x++){   
+		  for(int y=0;y<map[x].length;y++){
+			if(map[x][y]){						   drawSingleSquare(x, y,colorIdx-1, g);
+                        }			
+		}
+	}			
+}
+(由于方块代号决定的颜色从原始方块图片ACT的（typeCode+1）<<SIZE_ROL处开始取  ,也就是第二种颜色开始,这里堆积地图需要取到第一种颜色所以第三个参数为colorIdx-1;)
+
+
+补充：
+LayerGame的构造方法+paint方法保证了PanelOfGame中：paintComponent（Graphics g）方法中的 for=(int i=0;i<layarray.length;layarray[i++].paint(g));语句能够以遍历的方式刷新游戏层需要绘制的图形(只要GameService调用了repaint方法就会被重新绘制一遍，其绘制的内容也根据GameDto中的数据变更在而不断更新);
+
+
+
+///////////////////////////////////////////////////////////////
+
+<三> (LayerBackground)
+
+游戏面板中的背景层：
+LayerBackground提供了整个游戏面板的背景图片,并且根据当前玩家的等级变换图片;
+
+//背景图片对象列表: public static List<Image> BG_LIST;
+	
+1.静态初始化方法，初始化了一个根据所给路径读取的所有背景图片对象的列表BG_LIST：
+
+         static{
+		//获得一个指定位置的文件夹;
+		File dir=new File("graphics/background");
+		
+		//获得dir路径中的所有文件并放在文件数组files中;(注意：如果此时dir对应的是一个文件而不是文件夹,调用.listFiles方法会报错;)
+		File[] files=dir.listFiles(); 
+		
+		//循环将files数组中的文件取出并获取其绝对地址,然后根据地址把图片对象放入BG_LIST列表;
+		BG_LIST=new ArrayList<Image>();
+		for(File file: files){
+			if(file.isDirectory()){ //如果取到一个文件夹对象则跳过;
+				continue;
+			}
+			//获得file对象的全路径地址下的图片对象加入BG_LIST列表;
+			BG_LIST.add(new ImageIcon(file.getPath()).getImage());
+		}
+	}
+
+
+2.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+		}
+
+
+
+
+3.LayerBackground覆写了Layer父类的paint(Graphics g)方法：
+
+public void paint(Graphics g){
+
+（1） 由玩家目前等级对背景图片列表的容量取余,使得玩家等级达到图片数量上限时从玩家0级时的图片开始读取;
+      int bgIdx=this.dto.getCurrentLevel()%BG_LIST.size();
+
+（2） 根据列表下标取得当前待显示的背景图片并绘制;
+      g.drawImage(BG_LIST.get(bgIdx),0,0,1162,654,null);
+
+
+
+///////////////////////////////////////////////////////////////
+
+<四> (LayerData)
+
+数据库/本地磁盘数据显示层中间抽象类：继承了Layer类;在UI包中创建LayerData类的目的是,由于LayerDataBase/LayerDisk中用到了大量相似的变量/方法,但是如果把这些相同的代码写入Layer父类中让它们直接继承调用会显得不合适,因为其他继承Layer类的子类并不会用到这些方法和变量,于是就引入了一个既继承了Layer类又把重复性较高的LayerDataBase/LayerDisk类中的冗余代码写入一个中间父类，用带参数的方法让这两个类去继承,这样就会减少大量重复工作;
+
+（这种架构运用非常广泛,多用于几个重复性较高的子类需要一个中间父类去帮他们继承真正的父类并提供统一的方法让它们直接来继承调用;）
+
+
+//值槽的行数(由于其排列形式,此变量也是值槽间间距的数量)：MAX_ROW=5;
+
+//第一个值槽在层中的起始Y坐标：START_Y;
+
+//值槽间间距的大小：SPACE;
+
+//数据库标题图片对象：IMG_DB;
+
+//本地磁盘标题图片对象：IMG_DISK;
+
+
+1.构造方法：4个参数决定了游戏层边框显示的大小以及位置：
+public LayerDataBase(int x, int y, int w, int h) {
+			super(x, y, w, h);
+
+        //初始化值槽间间距的大小;
+	SPACE=(this.h-(IMG_RECT_H+4)*5-2*PADDING-IMG_DB.getHeight(null))/MAX_ROW;
+        //初始化第一个值槽在层中的起始Y坐标;
+	START_Y=PADDING+IMG_DB.getHeight(null)+SPACE;
+}
+
+
+2.绘制数据显示层中标题/所有值槽的方法(参数：标题图片对象;数据源对象;画笔)：
+      public void showDataBar(Image imgTitle,List<Player> players,Graphics g){
+
+
+(1) 根据所给标题图片对象绘制标题：
+    g.drawImage(imgTitle, this.x+PADDING, this.y+PADDING,null);
+
+(2) 从DTO层获取当前玩家分数：
+    int currentPoint=this.dto.getCurretPoint();
+
+
+(3) 循环绘制单个值槽(5个)及其中的内容：
+
+       for(int i=0;i<MAX_ROW;i++){
+			
+       //循环提取刚才取出保存在players列表中的数据库玩家分数记录;
+		Player p=players.get(i);
+		
+		int recordPoint=p.getPoint();
+		
+      //设置值槽比值为当前玩家的当前分数与数据库中第i个玩家分数记录的比值;
+		double percentage = (double)currentPoint/recordPoint;
+		
+     //利用三目判断如果值槽比值当前玩家分数超过了数据库第i个玩家的分数,则让percentage始终为      1.0;不然还是显示实际的比值;
+		percentage=percentage>1? 1.0:percentage;
+
+     //用三目判断传入的recordPoint是否为0,如果是就令drawRect方法中的第3个number参数为空(在值槽中不显示此项内容),不为0则显示其内容：
+        String tempRecordPoint=(recordPoint==0? null:Integer.toString(recordPoint));
+
+     //第2个参数表示循环绘制值槽时,每根之间的间距为一个值槽高度+间距大小;
+	this.drawRect(START_Y+i*(RECT_H+SPACE), p.getName(), tempRecordPoint, percentage, g);
+
+     }
+}
+
+
+
+3.继承Layer的抽象方法,继续交给子类去实现,可以去掉没有影响;
+  public abstract void paint(Graphics g); 
+
+
+
+
+//////////////////////////////////////////////////////////////
+
+<五> (LayerDisk)
+
+本地磁盘层,继承了中间抽象类LayerData;由5个值槽组成,分别显示本地磁盘中前五个玩家的信息(名称/最高分数)，并显示当前玩家的分数各占这五名玩家最好成绩的比例，以经验条的形式显示在值槽中,当当前玩家达到某个本地磁盘玩家的最好成绩,对应的经验值条停在满行状态；
+
+1.构造方法：4个参数决定了游戏层边框显示的大小以及位置：
+public LayerDataBase(int x, int y, int w, int h) {
+			super(x, y, w, h);
+
+}
+
+
+2.LayerDisk覆写了Layer父类的paint(Graphics g)方法：
+
+ public void paint(Graphics g){
+
+（1） this.createWindow(g); //边框绘制；
+
+（2） 绘制数据显示层中所有值槽的方法：
+      this.showDataBar(IMG_DISK, this.dto.getDiskRecord(), g);
+     （第二个参数为从DTO层获取本地磁盘玩家数据）
+
+
+
+//////////////////////////////////////////////////////////////
+//TODO UPDATE
+
+<六> (LayerDataBase)
+
+数据库存放/读取玩家信息功能暂时不开放！！
+
+数据库层,继承了中间抽象类LayerData;由5个值槽组成,分别显示数据库中前五个玩家的信息(名称/最高分数)，并显示当前玩家的分数各占这五名玩家最好成绩的比例，以经验条的形式显示在值槽中,当当前玩家达到某个数据库玩家的最好成绩,对应的经验值条停在满行状态；
+
+
+
+1.构造方法：4个参数决定了游戏层边框显示的大小以及位置：
+public LayerDataBase(int x, int y, int w, int h) {
+			super(x, y, w, h);
+
+}
+
+
+2.LayerDataBase覆写了Layer父类的paint(Graphics g)方法：
+
+ public void paint(Graphics g){
+
+（1） this.createWindow(g); //边框绘制；
+
+（2） 绘制数据显示层中所有值槽的方法：
+      this.showDataBar(IMG_DB, this.dto.getDbRecord(), g);
+     （第二个参数为从DTO层获取数据库玩家数据）
+
+
+
+
+//////////////////////////////////////////////////////////////
+
+<七> (LayerButton) 
+
+按钮层,由于此层只负责绘制开始字样的提示图片,并不包含面板中按钮组件的绘制/安装,所以不包含按钮动作监听或者游戏开始逻辑等代码;
+ 
+//开始按钮图片对象： IMG_START; 
+
+1.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+}
+
+
+2.LayerButton覆写了Layer父类的paint(Graphics g)方法：
+
+ public void paint(Graphics g){
+
+（1） this.createWindow(g); //边框绘制；
+
+（2） g.drawImage(IMG_START, this.x+PADDING+50, this.y+PADDING+25, null);
+ 
+    }
+}
+
+
+
+//////////////////////////////////////////////////////////////
+
+<八> (LayerNext)
+
+游戏面板中的显示下一个刷新方块的图层：
+
+//提供一个方块图片数组Image[] NEXT_ACT；
+
+//一个静态代码块：
+static{
+	NEXT_ACT=new Image[7];//初始化Image数组;
+	for(int i=0;i<NEXT_ACT.length;i++){
+        NEXT_ACT[i]=new ImageIcon
+       ("graphics/game/"+i+".png").getImage();
+
+  //这里的i是图片的序号对应了7张已经编辑好的经典方块组合的现成图片;这里不像LayerGame里那样去切割毛坯图片逐个绘制4个单个方块是因为LayerGame中的方块组合需要经历各种越界判断和旋转,移动等方法,如果以一个整的方块组合图片为单位运作反而会复杂;而这里只是单纯的显示在块固定的空间并且不会移动所以利用现成的方块组合有助于减少程序运行的负担; 
+
+        }
+     }
+
+
+1.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+		}
+
+
+2.LayerNext覆写了Layer父类的paint(Graphics g)方法：
+
+public void paint(Graphics g){
+
+（1）边框绘制:
+     this.createWindow(g); 
+ 
+
+（2）如果游戏主线程已经开始,则绘制下一个方块的图片：
+     if(this.dto.isStart()){
+      this.drawImageInCenter(NEXT_ACT[this.dto.getNext()], g);
+}
+
+(利用绘制中心图片方法（在DTO层中取得下一个方块的图形类型代码作为NEXT_ACT数组下标以此获得下一个显示图形对象传递给绘制中心图片方法的参数）;其参数的选取属于数组的映射:通过特定方法利用下标值去取得声明后的数组中的值——从很大程度上代替了switch case方法<which BTW is not recommended>;)
+
+
+
+//////////////////////////////////////////////////////////////
+
+<九> (LayerLevel)
+
+在面板中显示目前等级的层：
+
+//提供图层中显示标题图片的对象：IMG_LV；
+//标题图片的宽度：IMG_LV_W；
+
+1.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+		}
+
+
+2.LayerLevel覆写了Layer父类的paint(Graphics g)方法：
+
+ public void paint(Graphics g){
+
+（1） this.createWindow(g); //边框绘制；
+
+（2） //获得标题在层上出现的居中x坐标并绘制标题：
+      int centerX=this.x+(this.w-IMG_LV_W>>1); 
+      g.drawImage(IMG_LV, centerX, this.y+PADDING, null);
+
+（3） //调用从父类继承下来的左填充显示数字方法绘制最多由2位整数构成的等级图片:
+      this.drawNumberLeftPad(centerX-this.x,64,this.dto.getcurrentLevel(),2,g);
+
+
+
+//////////////////////////////////////////////////////////////
+
+<十> (LayerPoint)
+
+分数图层包含了对当前分数,消行,值槽等的显示：
+
+//提供标题图片的对象（分数）：IMG_POINT;
+
+//提供标题图片的对象（消行）：IMG_RMLINE;
+
+//分数图片在层中显示的X坐标：POINT_X (调用drawNumberLeftPad的参数)；
+
+//分数图片在层中显示的Y坐标：POINT_Y；
+
+//消行标题图片在层中显示的Y坐标：IMG_RMLINE_Y;(也是消行分数在层中的Y坐标);
+
+//值槽颜色填充图片层中显示的Y坐标: expY(调用drawRect的参数);
+
+//分数允许显示的最大位数：POINT_MAX_BIT=5;
+
+//规定升级所需的消行数：LEVEL_UP=20;
+	
+
+1.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+
+          //初始化分数显示的x坐标(为了让分数显示离开层边框右侧距离为PADDING)；
+          //这里需要注意的是：之所以让POINT_X在构造方法里赋值而不是在类加载时就初始化是由于它需要调用this.w，而这个参数只有LayerPoint对象在PanelOfGame中被初始化时才确定,所以也只能放在super(x, y, w, h);语句之后等父类初始化好了,4个参数都保存在成员变量里了(标记为可见),子类也就继承了这4个变量: 
+	  POINT_X=this.w-IMG_NUMBER_W*POINT_MAX_BIT-PADDING; 
+
+		}
+
+
+
+2.LayerPoint覆写了Layer父类的paint(Graphics g)方法：
+
+ public void paint(Graphics g){
+
+ (1) this.createWindow(g); //边框绘制；
+
+ (2) g.drawImage(IMG_POINT, this.x+PADDING, this.y+POINT_Y, null); //绘制图层标题(分数);
+
+ (3) //绘制当前分数对应的数字图片(做多为5位)：
+      this.drawNumberLeftPad(POINT_X,POINT_Y,this.dto.getCurretPoint(),POINT_MAX_BIT,g);
+
+ (4) g.drawImage(IMG_RMLINE, this.x+PADDING, this.y+IMG_RMLINE_Y, null); //绘制图层标题(消行)：
+		
+ (5) //绘制当前消行分数对应的数字图片(做多为5位);
+      this.drawNumberLeftPad(POINT_X,IMG_RMLINE_Y,this.dto.getCurrentRemovedLine(),POINT_MAX_BIT,g);		
+
+ (6) //得到已经消去的行数信息：
+      int rmline=this.dto.getCurrentRemovedLine();
+
+ (7) //绘制值槽(经验)：
+     this.drawRect(expY,"NEXT LVL",null,(double)rmline%LEVEL_UP/(double)LEVEL_UP,g);
+   
+   //这里用rmline%LEVEL_UP/LEVEL_UP取得比例作为参数value/maxValue的值(参考Layer)而不是直接用rmline/LEVEL_UP的原因是：当rmline=LEVEL_UP需要显示比例为0,因为升级了需要从值槽的空值开始显示;
+
+
+
+//////////////////////////////////////////////////////////////
+
+<十一> (LayerAbout)
+
+关于层，由一张贴图构成：
+
+//提供贴图对象: IMG_SIGN;
+
+
+1.构造方法中4个参数决定了游戏层边框显示的大小以及位置：
+ public LayerGame(int x, int y, int w, int h) {
+			super(x, y, w, h);
+}
+
+2.LayerAbout覆写了Layer父类的paint(Graphics g)方法：
+
+ public void paint(Graphics g){
+
+（1） this.createWindow(g); //边框绘制；
+
+（2） this.drawImageInCenter(IMG_SIGN,g);//调用drawImageInCenter方法把所选图片绘制在层中心;
+ 
+    }
+}
+
+
+
+****************   拾叁.FrameOfPlayerInfo   ******************
+
+(FrameOfPlayerInfo)
+
+玩家分数记录窗口(继承了JFrame)：FrameOfPlayerInfo窗口由游戏主线程gameThread在接收到游戏结束状态后调用afterLose()方法而创建,在这以后此线程就结束了;FrameOfPlayerInfo的主要职能是将从afterLose()方法传入的玩家最后分数显示在窗口中，并且要求玩家输入姓名；之后将此玩家信息作为参数通过saveRecord方法传给游戏控制块,由它来将此信息结合玩家最后分数保存在DataDisk与DataBase中，也由它来把DataDisk与DataBase中的玩家排名提取并保存在DTO层等待游戏面板的绘制;FrameOfPlayerInfo拥有对GameControl的访问权(传递玩家姓名信息)，GameControl也有对FrameOfPlayerInfo的控制权(传递玩家最后分数，并要求显示窗口);
+
+
+// 游戏控制块访问权：GameControl gamecontrol;
+
+// 确定按钮：JButton btnOk;
+
+// 玩家分数标题：JLabel lbPoint;
+
+// 错误信息标题：JLabel errMsg;
+
+// 玩家姓名输入文本块：JTextField playerName;
+
+
+1. 构造方法：
+     public FrameOfPlayerInfo(GameControl gamecontrol){
+		
+		this.gamecontrol=gamecontrol;
+
+                //设置窗口标题：
+		this.setTitle("保存记录");
+
+		//设置窗口大小：
+		this.setSize(256,128);
+
+		 //设置窗口居中：
+		Toolkit toolkit = Toolkit.getDefaultToolkit();
+		//获得显示器的大小：
+		Dimension screen=toolkit.getScreenSize();
+	        int x = (screen.width-this.getWidth())/2;
+		//考虑到屏幕底部的任务栏,窗口上移若干像素;
+	        int y = (screen.height-this.getHeight())/2-29;
+		//设置窗口位置为居中;
+	        this.setLocation(x,y);
+		
+//		FrameUtil.setFrameCenter(this);
+                (需要导入外来包：import util.FrameUtil;才能实现)
+
+
+		//窗口设置为不可改变大小：
+		this.setResizable(false);
+
+		//窗口的布局设置为边框布局：
+		this.setLayout(new BorderLayout());
+
+		//开始初始化窗口内组建：
+		this.createCom();
+
+		//安装动作监听： 
+		this.setActionListener();
+		
+	}
+
+
+
+2. 主框架内组件初始化：
+	private void createCom(){
+		
+		//创建流式布局面板(靠左)：
+		JPanel north=new JPanel(new FlowLayout(FlowLayout.LEFT));
+		//创建显示分数标题：
+		this.lbPoint=new JLabel();
+		//将显示分数标题安装在north面板上：
+		north.add(lbPoint);
+		//创建错误信息标题(设置颜色为红色)：
+		this.errMsg=new JLabel();
+		this.errMsg.setForeground(Color.RED);
+		//将显示错误信息标题安装在north面板上：
+		north.add(errMsg);
+		//north面板添加到主框架的北面位置：
+		this.add(north,BorderLayout.NORTH);
+		
+		
+		//创建流式布局面板(靠左)：
+		JPanel center = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		//创建玩家姓名输入文本区域：
+		this.playerName=new JTextField(10);
+		//创建提示玩家输入姓名标题：
+		center.add(new JLabel("tell me your name: "));
+		//将显示提示玩家输入姓名标题安装在center面板上：
+		center.add(playerName);
+		//center面板添加到主框架的中间位置：
+		this.add(center,BorderLayout.CENTER);
+		
+		
+		//创建流式布局面板(居中)：
+		JPanel south = new JPanel(new FlowLayout(FlowLayout.CENTER));
+		//创建确定按钮:
+		this.btnOk=new JButton("confirm");
+		//将按钮安装在south面板上：
+		south.add(btnOk);
+		//south面板添加到主框架的南面位置：
+		this.add(south,BorderLayout.SOUTH);
+		
+	}
+
+
+3. 在窗体上安装动作监听：
+    private void setActionListener() {
+
+//在玩家分数记录窗体上安装窗体关闭监听,如果玩家未按下确认按键直接关闭此窗口,游戏开始按键将被刷新:
+
+	this.addWindowListener(new WindowAdapter(){
+
+		@Override
+		public void windowClosing(WindowEvent e) {
+
+			gamecontrol.startBtnRefresh();
+
+			}
+		});
+
+//在按钮上安装动作监听,捕获玩家按下确认按钮的信息并做相应处理：
+
+	this.btnOk.addActionListener(new ActionListener(){
+
+	   @Override
+	   public void actionPerformed(ActionEvent e) {
+		String name=playerName.getText();
+		   if(name.length()>16||name==null){
+		     errMsg.setText("shorten your name !");
+		   }else if(name.equals("songjiuchong")){
+		     errMsg.setText("WTF! Welcome, My Lord !");
+		   }else{
+
+			//TODO 限制条件;
+
+
+			//要求游戏控制块保存玩家信息：
+			gamecontrol.saveRecord(name);
+
+			//关闭窗口：
+			setVisible(false);
+
+			//刷新游戏开始按钮：						gamecontrol.startBtnRefresh();
+
+		        }
+		   }
+	   });
+     }
+  
+
+
+4. 显示玩家最终分数并令玩家分数记录窗口可见：
+
+	public void showWindow(int point){
+		this.lbPoint.setText("your point: "+ point);
+		this.setVisible(true);
+
+		//使窗口始终置于最上层;
+		this.setAlwaysOnTop(true);
+	}
+
+
+
+
+
+
+********************   FINAL.DELIVERY   **********************
+
+(DELIVERY)
+
+1.工程名 : Export ：Java : Runnable JAR file : Next
+2.Launch configuration: Main -LastSong Tetris / 
+Library handling: Copy required libraries into a sub-folder next to the generated JAR : Finish ；
+3.将workspaces中此工程下的graphics/save文件放入游戏根目录文件夹;
+4.双击运行jar文件可能出现的问题，提供疑难解答文本文件;
+5.设置windows 批处理文件"start helper.bat"：
+内容：java -jar LastSongTetris.jar
+(相当于用windows控制台输入命令来运行程序)；
+
+
+///////////////////////////////////////////////////////
+
+疑难解答：
+
+参考网站：
+http://jingyan.baidu.com/article/200957617c3619cb0621b44d.html
+
+Windows不能用鼠标双击运行jar文件怎么办？
+
+Java应用程序jar文件可以由 JVM（Java虚拟机）直接执行，只要操作系统安装了JVM便可以运行作为Java应用程序的jar文件，其跨平台特性使得很多工具软件都用jar方式来部署分发，比如用于HP WebOS系列手机常用的工具软件WebOSQuickInstall（简称WQI）就是采用jar方式。
+
+可是，很多朋友遇到一个难题，那就是下载了jar文件以后在Windows中不能用鼠标双击运行（或者双击运行以后使用WinRAR或其他压缩软件打开了），这可怎么办？
+
+
+工具/原料
+Java虚拟机（JVM）
+Windows注册表编辑器regedit
+Windows管理员权限的用户帐户
+Win7下的解决方法
+1
+下载并安装最新版的Java虚拟机（JVM）。
+下载网址：http://www.java.com/zh_CN/
+注意：无论是Win7还是WinXP，都需要事先下载并安装Java虚拟机。
+
+
+2
+安装好Java虚拟机后，双击需要运行的jar文件或在jar文件上点击鼠标右键，在弹出的菜单中选择“打开方式”→“选择默认程序”。
+
+3
+在“打开方式”设置窗口中点击选中选项“始终使用选择的程序打开这种文件”前的复选框，再点击旁边的“浏览”按钮。
+
+4
+选择JAVA虚拟机的安装文件夹，如果安装的是Java 7，安装文件夹一般为“C:\Program Files\Java\jre7\bin”（具体文件夹请自行查找），找到javaw.exe文件，点击“打开”按钮。
+
+5
+这时已经设置了使用javaw.exe应用程序来打开jar文件，可是实际上这时双击jar文件还是没有反应，这是因为没有设置打开文件参数导致的。
+在Windows开始菜单的搜索框中输入“regedit”，在上方搜索出的文件regedit上点击鼠标右键，在弹出的菜单中选择“以管理员身份运行”。
+
+
+6
+在注册表编辑器中，找到“HKEY_CLASSES_ROOT\Applications\javaw.exe\shell\open\command”，在其中文件打开命令中加入参数“-jar”（无引号），修改后的数值类似：“"C:\Program Files\Java\jre7\bin\javaw.exe" -jar "%1"”（只需要添加-jar参数，无需修改其他信息），保存并退出注册表编辑器。
+
+
+END
+WinXP下的解决方法
+安装好Java虚拟机后，打开桌面上“我的电脑”，点击菜单“工具”→“文件夹选项”。
+
+在“文件夹选项”设置窗口中切换到“文件类型”标签。找找看其中的文件扩展名有没有.jar，如果有，则选择.jar文件，点击“更改”按钮。如果没有.jar，那么点击“新建”按钮新建一个.jar扩展名。
+
+
+点击“高级”按钮，在出现“编辑文件类型”窗口中点击“新建”按钮，在弹出的“新操作”设置窗口中，将操作命名为“open”，用于执行操作的应用程序为“C:\Program Files\Java\jre7\bin\javaw.exe" -jar "%1”（请勿填写引号，具体JVM的文件夹路径请根据实际情况填写，一般位于C:\Program Files\Java中）。
+设置完成后退出保存退出即可。
+
+END
+注意事项
+无论使用Win7还是WinXP操作系统，都需要提前安装Java虚拟机（JVM）。
+jar是Java可执行程序，其打包格式使用zip格式压缩打包，因此有可能会被某些压缩软件当成压缩包打开，如果双击时使用压缩软件打开了，可以如上文所述修改jar文件的默认打开方式，使其使用Java虚拟机来运行。
+要使jar文件正常运行，其文件名不能为中文或其他特殊字符，如果按照本文操作还是不能运行，请尝试修改文件名为标准的英文文件名。
+
+
+
+
+**************************************************************
+
+
+
+TODO TIPS: 
+review needed:
+1.ALL
+
+
+update needed : 
+1.当玩家未破本地记录,还是会要求输入名字;
+2.如果玩家分数与本地记录中第五名相同有可能会上榜，也可能不上，由Player中的排序方法决定;
+3.后期美工;
+4.各个组件处于的包信息;
+5.增加隐藏除了LayerGame外所有Layer的快捷键;
+6.玩家分数记录窗口的回车触发confirm; 
+7.将流程整理制作成word文档! 10/1之前;
+
+
+update log:
+
+8/11：
+1. GameControl/FrameOfPlayerInfo : 玩家在游戏结束后未按下确认按钮直接关闭玩家分数记录窗口后,游戏开始按钮被刷新;
+2. 使玩家分数记录窗口始终置于最上层;
+
+
+
+
+
+
+
+
+
+
+																	                                             宋九重
+
+																	                                           2014-8-9
+
+
+
+
