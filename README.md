@@ -29,17 +29,17 @@
 
 游戏截图:
 
-![](./LastSong Tetris BY 九重/screenshot/1.png)
+![](./screenshot/1.png)
 
-![](./LastSong Tetris BY 九重/screenshot/2.png)
+![](./screenshot/2.png)
 
-![](./LastSong Tetris BY 九重/screenshot/3.png)
+![](./screenshot/3.png)
 
-![](./LastSong Tetris BY 九重/screenshot/4.png)
+![](./screenshot/4.png)
 
-![](./LastSong Tetris BY 九重/screenshot/5.png)
+![](./screenshot/5.png)
 
-![](./LastSong Tetris BY 九重/screenshot/6.png)
+![](./screenshot/6.png)
 
 
 
